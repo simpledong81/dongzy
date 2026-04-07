@@ -12,19 +12,17 @@
 ## 1. 使用 Python 3.12 虚拟环境
 
 ```bash
-cd /Users/dongyihao/Downloads/samsino-work/dongzy
+cd ./dongzy
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
 pip install -r requirements.txt
-# 可选：安装 SHAP 完整解释能力
-pip install shap
 ```
 
 ## 2. 运行测试（TDD）
 
 ```bash
-cd /Users/dongyihao/Downloads/samsino-work/dongzy
+cd ./dongzy
 source .venv/bin/activate
 pytest -q
 ```
@@ -32,7 +30,7 @@ pytest -q
 ## 3. 运行建模应用
 
 ```bash
-cd /Users/dongyihao/Downloads/samsino-work/dongzy
+cd ./dongzy
 source .venv/bin/activate
 PYTHONPATH=src python -m uhpc_ml_app.app \
   --input data/raw/literature_sample.csv \
@@ -42,7 +40,7 @@ PYTHONPATH=src python -m uhpc_ml_app.app \
 ## 4. 运行 Streamlit Web 界面
 
 ```bash
-cd /Users/dongyihao/Downloads/samsino-work/dongzy
+cd ./dongzy
 source .venv/bin/activate
 PYTHONPATH=src streamlit run streamlit_app.py
 ```
@@ -81,7 +79,7 @@ PYTHONPATH=src streamlit run streamlit_app.py
 通过 OpenAlex + Crossref 获取真实文献元数据，并自动抽取摘要中的结构化指标（Ra/Rz、水胶比、纤维率、龄期、拉伸/抗剪强度）。
 
 ```bash
-cd /Users/dongyihao/Downloads/samsino-work/dongzy
+cd ./dongzy
 source .venv/bin/activate
 PYTHONPATH=src python -m uhpc_ml_app.literature_crawler \
   --query "UHPC NC repair interface bond roughness Ra Rz water binder ratio fiber volume curing age tensile shear" \
