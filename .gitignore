@@ -1,0 +1,37 @@
+# Python bytecode/cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+
+# Test and coverage artifacts
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# OS/editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Build/distribution artifacts
+build/
+dist/
+*.egg-info/
+
+# Runtime outputs and generated assets
+outputs/
+data/processed/
+data/raw/literature_real.csv
+data/raw/literature_real.manifest.json
+
