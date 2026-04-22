@@ -121,7 +121,7 @@ no_implicit_optional = true
 plugins = []
 
 [[tool.mypy.overrides]]
-module = ["shap", "shap.*", "xgboost", "xgboost.*", "streamlit", "streamlit.*", "matplotlib.*"]
+module = ["shap", "shap.*", "xgboost", "xgboost.*", "streamlit", "streamlit.*", "matplotlib.*", "requests", "requests.*"]
 ignore_errors = true
 
 # literature_crawler 将在后续 PR 移除，等 CLI 完全切到 uhpc_ml_app.literature 后再删。
