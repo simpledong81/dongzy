@@ -57,7 +57,7 @@ with st.sidebar:
 if uploaded is not None and not run_clicked:
     preview = pd.read_csv(uploaded).head(10)
     st.subheader("数据预览（前 10 行）")
-    st.dataframe(preview, use_container_width=True)
+    st.dataframe(preview, width="stretch")
     uploaded.seek(0)
 
 
@@ -137,7 +137,7 @@ def _render_accuracy_tab(output_dir: Path) -> None:
     if metrics_df.empty:
         st.info("`metrics_summary.csv` 未找到。")
     else:
-        st.dataframe(metrics_df, use_container_width=True)
+        st.dataframe(metrics_df, width="stretch")
         st.download_button(
             "下载 metrics_summary.csv",
             data=(output_dir / "metrics_summary.csv").read_bytes(),
@@ -149,7 +149,7 @@ def _render_accuracy_tab(output_dir: Path) -> None:
     if per_target_df.empty:
         st.info("`metrics_per_target.csv` 未找到。")
     else:
-        st.dataframe(per_target_df, use_container_width=True)
+        st.dataframe(per_target_df, width="stretch")
         st.download_button(
             "下载 metrics_per_target.csv",
             data=(output_dir / "metrics_per_target.csv").read_bytes(),
@@ -161,7 +161,7 @@ def _render_accuracy_tab(output_dir: Path) -> None:
     if cv_df.empty:
         st.info("`cv_metrics.csv` 未找到。")
     else:
-        st.dataframe(cv_df, use_container_width=True)
+        st.dataframe(cv_df, width="stretch")
         st.download_button(
             "下载 cv_metrics.csv",
             data=(output_dir / "cv_metrics.csv").read_bytes(),
@@ -174,7 +174,7 @@ def _render_accuracy_tab(output_dir: Path) -> None:
     if baseline_df.empty:
         st.info("`baseline_metrics.csv` 未找到（可能 `include_baselines=False`）。")
     else:
-        st.dataframe(baseline_df, use_container_width=True)
+        st.dataframe(baseline_df, width="stretch")
         st.download_button(
             "下载 baseline_metrics.csv",
             data=(output_dir / "baseline_metrics.csv").read_bytes(),
@@ -207,7 +207,7 @@ def _render_importance_tab(output_dir: Path, plots) -> None:
             values="permutation_importance_mean",
             aggfunc="mean",
         ).reindex(list(FEATURE_COLUMNS))
-        st.dataframe(pivot, use_container_width=True)
+        st.dataframe(pivot, width="stretch")
         st.bar_chart(pivot)
         st.download_button(
             "下载 permutation_importance.csv",
@@ -263,7 +263,7 @@ def _render_shap_tab(output_dir: Path, plots) -> None:
                     .sort_values("mean_abs_shap", ascending=False)
                     .reset_index(drop=True)
                 )
-                st.dataframe(imp_df, use_container_width=True)
+                st.dataframe(imp_df, width="stretch")
             dep_map = plots.shap_dependence.get(target, {})
             if dep_map:
                 st.markdown("**SHAP 依赖曲线（按粗糙度特征）**")
@@ -302,7 +302,7 @@ def _render_recommendation_tab(output_dir: Path) -> None:
                     }
                 )
         if rows:
-            st.dataframe(pd.DataFrame(rows), use_container_width=True)
+            st.dataframe(pd.DataFrame(rows), width="stretch")
         st.download_button(
             "下载 roughness_recommendations.json",
             data=json.dumps(recs, ensure_ascii=False, indent=2).encode("utf-8"),
@@ -315,7 +315,7 @@ def _render_recommendation_tab(output_dir: Path) -> None:
     if cond_df.empty:
         st.info("`roughness_conditional_recommendations.csv` 未找到（可能样本过少未产出）。")
     else:
-        st.dataframe(cond_df, use_container_width=True)
+        st.dataframe(cond_df, width="stretch")
         st.download_button(
             "下载 roughness_conditional_recommendations.csv",
             data=(output_dir / "roughness_conditional_recommendations.csv").read_bytes(),
