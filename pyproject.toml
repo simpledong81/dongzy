@@ -33,6 +33,7 @@ dev = [
     "ruff>=0.3",
     "mypy>=1.7",
     "pandas-stubs",
+    "types-requests",
     "pre-commit>=3.5",
 ]
 # MLflow 作为可选实验跟踪插件，CI 不强制安装。
