@@ -33,15 +33,21 @@ dev = [
     "ruff>=0.3",
     "mypy>=1.7",
     "pandas-stubs",
+    "types-requests",
     "pre-commit>=3.5",
 ]
 # MLflow 作为可选实验跟踪插件，CI 不强制安装。
 mlflow = [
     "mlflow>=2.8",
 ]
+# PDF 抽取（PR#5）可选；pdfplumber 用于离线表格抽取，GROBID 侧只靠 requests。
+pdf = [
+    "pdfplumber>=0.10",
+]
 
 [project.scripts]
 uhpc-ml = "uhpc_ml_app.app:main"
+literature-ingest = "uhpc_ml_app.literature.cli:main"
 
 [project.urls]
 Repository = "https://github.com/simpledong81/dongzy"
@@ -116,10 +122,15 @@ no_implicit_optional = true
 plugins = []
 
 [[tool.mypy.overrides]]
-module = ["shap", "shap.*", "xgboost", "xgboost.*", "streamlit", "streamlit.*", "matplotlib.*"]
+module = ["shap", "shap.*", "xgboost", "xgboost.*", "streamlit", "streamlit.*", "matplotlib.*", "requests", "requests.*"]
 ignore_errors = true
 
-# literature_crawler 将在 PR#5 重写为 PRISMA + SourceAdapter 抽象层，期间暂不跑 mypy
+# literature_crawler 将在后续 PR 移除，等 CLI 完全切到 uhpc_ml_app.literature 后再删。
 [[tool.mypy.overrides]]
 module = ["uhpc_ml_app.literature_crawler"]
+ignore_errors = true
+
+# pdfplumber / grobid-client 是可选依赖；CI 默认不装，放过导入错误
+[[tool.mypy.overrides]]
+module = ["pdfplumber", "pdfplumber.*"]
 ignore_errors = true
