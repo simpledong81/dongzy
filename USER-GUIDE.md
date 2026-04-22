@@ -41,7 +41,7 @@
 
 #### 步骤 B：字段与类型
 
-- 必需特征列：`roughness_ra`、`roughness_rz`、`water_binder_ratio`、`fiber_volume_fraction`、`nc_strength_grade`、`curing_age_days`；
+- 必需特征列：`roughness_ra`、`roughness_rz`、`water_binder_ratio`、`fiber_volume_ratio`、`nc_strength_grade`、`curing_age_days`；
 - 必需目标列：`tensile_bond_strength`、`shear_bond_strength`；
 - 使用 `pd.to_numeric(errors="coerce")` 统一成数值，不能转换的字符串被设为 `NaN`。
 

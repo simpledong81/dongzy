@@ -1,3 +1,10 @@
+"""UHPC-NC 修复界面粘结性能预测 — Streamlit 可视化面板。
+
+PR#7 起面板对接 PR#2/#3/#4 产物：per-target 指标、Repeated K-Fold 95% CI、
+三基线对照、跨模型 Permutation Importance、双目标 SHAP（summary + 依赖曲线）、
+条件化粗糙度推荐，以及 SHAP 降级审计。
+"""
+
 from __future__ import annotations
 
 import json
@@ -8,37 +15,301 @@ import pandas as pd
 import streamlit as st
 
 from uhpc_ml_app.app import run_pipeline
-from uhpc_ml_app.web_export import build_results_zip
+from uhpc_ml_app.config import FEATURE_COLUMNS, TARGET_COLUMNS
+from uhpc_ml_app.web_export import (
+    build_results_zip,
+    discover_plots,
+    load_baseline_metrics,
+    load_best_model_info,
+    load_conditional_recommendations,
+    load_cv_metrics,
+    load_metrics_summary,
+    load_per_target_metrics,
+    load_permutation_importance,
+    load_roughness_recommendations,
+)
 
 st.set_page_config(page_title="UHPC-NC 界面粘结预测", layout="wide")
 st.title("UHPC-NC 修复界面粘结性能预测")
-st.caption("上传文献整合 CSV，自动完成清洗、建模、评估、可解释性分析与结果导出。")
+st.caption(
+    "上传文献整合 CSV（可直接使用 `literature-ingest` 产出的 `literature_clean.csv`），"
+    "自动完成清洗、建模、Repeated K-Fold 95% CI、基线对照、双目标 SHAP 与粗糙度工程推荐。"
+)
 
 with st.expander("输入数据字段要求", expanded=False):
-    st.code(
-        "\n".join(
-            [
-                "roughness_ra",
-                "roughness_rz",
-                "water_binder_ratio",
-                "fiber_volume_ratio",
-                "nc_strength_grade",
-                "curing_age_days",
-                "tensile_bond_strength",
-                "shear_bond_strength",
-            ]
-        )
+    required_columns = list(FEATURE_COLUMNS) + list(TARGET_COLUMNS)
+    st.code("\n".join(required_columns))
+    st.caption(
+        "其余列（如 DOI、source、specimen_type）不影响训练，"
+        "但建议保留以便追溯与引用。各列物理上下界见 `src/uhpc_ml_app/schemas.py::CLEAN_SCHEMA`。"
     )
 
-uploaded = st.file_uploader("上传 CSV 文件", type=["csv"])
-seed = st.number_input("随机种子", min_value=1, value=42, step=1)
-run_clicked = st.button("开始训练与分析", type="primary", disabled=uploaded is None)
+with st.sidebar:
+    st.header("运行设置")
+    uploaded = st.file_uploader("上传 CSV 文件", type=["csv"])
+    seed = st.number_input("随机种子", min_value=1, value=42, step=1)
+    run_clicked = st.button("开始训练与分析", type="primary", disabled=uploaded is None)
+    st.caption(
+        "⚠️ 切勿使用仓库自带的 `data/raw/literature_sample.csv` 的训练结果写论文 ——"
+        "那是合成示例数据。"
+    )
 
-if uploaded is not None:
+if uploaded is not None and not run_clicked:
     preview = pd.read_csv(uploaded).head(10)
-    st.subheader("数据预览（前10行）")
+    st.subheader("数据预览（前 10 行）")
     st.dataframe(preview, use_container_width=True)
     uploaded.seek(0)
+
+
+def _fmt_float(x: object, ndigits: int = 4) -> str:
+    try:
+        return f"{float(x):.{ndigits}f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _render_overview_tab(output_dir: Path) -> None:
+    info = load_best_model_info(output_dir)
+    if not info:
+        st.info("尚未生成 best_model_info.json。")
+        return
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("最优模型", str(info.get("best_model", "—")))
+    col2.metric("选模型依据", str(info.get("model_selection_metric", "cv_r2_mean")))
+    cv = info.get("cv_metrics", {}) or {}
+    mean = _fmt_float(cv.get("r2_mean"))
+    low = _fmt_float(cv.get("r2_ci95_low"))
+    high = _fmt_float(cv.get("r2_ci95_high"))
+    col3.metric("最优模型 CV R²", mean, delta=f"95% CI [{low}, {high}]", delta_color="off")
+
+    explanation_method = info.get("explanation_method") or {}
+    failed_targets = info.get("failed_targets") or {}
+    if failed_targets or any(v == "correlation_fallback" for v in explanation_method.values()):
+        st.warning(
+            "SHAP 存在降级：以下目标使用 `correlation_fallback`，该结果**不等价于** SHAP，"
+            "请勿作为 SHAP 结论写入论文："
+            + ", ".join(t for t, v in explanation_method.items() if v == "correlation_fallback")
+            + (
+                "；失败原因：" + "; ".join(f"{k}={v}" for k, v in failed_targets.items())
+                if failed_targets
+                else ""
+            ),
+        )
+    elif explanation_method:
+        methods = ", ".join(f"{k}={v}" for k, v in explanation_method.items())
+        st.success(f"SHAP 解释器分派：{methods}")
+
+    st.subheader("最优模型元数据")
+    st.json(info)
+
+
+def _render_accuracy_tab(output_dir: Path) -> None:
+    metrics_df = load_metrics_summary(output_dir)
+    per_target_df = load_per_target_metrics(output_dir)
+    cv_df = load_cv_metrics(output_dir)
+    baseline_df = load_baseline_metrics(output_dir)
+
+    st.subheader("三模型总体指标 + Repeated K-Fold 95 % CI")
+    if metrics_df.empty:
+        st.info("`metrics_summary.csv` 未找到。")
+    else:
+        st.dataframe(metrics_df, use_container_width=True)
+        st.download_button(
+            "下载 metrics_summary.csv",
+            data=(output_dir / "metrics_summary.csv").read_bytes(),
+            file_name="metrics_summary.csv",
+            mime="text/csv",
+        )
+
+    st.subheader("按目标拆分指标（拉伸 / 抗剪）")
+    if per_target_df.empty:
+        st.info("`metrics_per_target.csv` 未找到。")
+    else:
+        st.dataframe(per_target_df, use_container_width=True)
+        st.download_button(
+            "下载 metrics_per_target.csv",
+            data=(output_dir / "metrics_per_target.csv").read_bytes(),
+            file_name="metrics_per_target.csv",
+            mime="text/csv",
+        )
+
+    st.subheader("Repeated K-Fold CV 明细")
+    if cv_df.empty:
+        st.info("`cv_metrics.csv` 未找到。")
+    else:
+        st.dataframe(cv_df, use_container_width=True)
+        st.download_button(
+            "下载 cv_metrics.csv",
+            data=(output_dir / "cv_metrics.csv").read_bytes(),
+            file_name="cv_metrics.csv",
+            mime="text/csv",
+        )
+
+    st.subheader("基线对照（均值 / 线性 / τ=k·√fc）")
+    st.caption("用于回答：ML 相对零学习基线与经典经验公式是否带来实质增益。")
+    if baseline_df.empty:
+        st.info("`baseline_metrics.csv` 未找到（可能 `include_baselines=False`）。")
+    else:
+        st.dataframe(baseline_df, use_container_width=True)
+        st.download_button(
+            "下载 baseline_metrics.csv",
+            data=(output_dir / "baseline_metrics.csv").read_bytes(),
+            file_name="baseline_metrics.csv",
+            mime="text/csv",
+        )
+
+
+def _render_importance_tab(output_dir: Path, plots) -> None:
+    pi_df = load_permutation_importance(output_dir)
+    st.subheader("跨模型 Permutation Importance（R² 下降量）")
+    st.caption(
+        "Permutation Importance 口径**跨模型一致**，是论文中"
+        "对比 RF / XGBoost / BPNN 特征贡献的推荐依据；模型内置 `feature_importances_` 跨模型不可比。"
+    )
+    if pi_df.empty:
+        st.info("`permutation_importance.csv` 未找到。")
+    else:
+        models = sorted(pi_df["model"].unique())
+        targets = sorted(pi_df["target"].unique())
+        col1, col2 = st.columns(2)
+        with col1:
+            target_filter = st.selectbox("目标", targets, key="pi_target")
+        with col2:
+            model_filter = st.multiselect("模型", models, default=models, key="pi_models")
+        filtered = pi_df[(pi_df["target"] == target_filter) & (pi_df["model"].isin(model_filter))]
+        pivot = filtered.pivot_table(
+            index="feature",
+            columns="model",
+            values="permutation_importance_mean",
+            aggfunc="mean",
+        ).reindex(list(FEATURE_COLUMNS))
+        st.dataframe(pivot, use_container_width=True)
+        st.bar_chart(pivot)
+        st.download_button(
+            "下载 permutation_importance.csv",
+            data=(output_dir / "permutation_importance.csv").read_bytes(),
+            file_name="permutation_importance.csv",
+            mime="text/csv",
+        )
+
+    if plots.permutation_importance:
+        st.subheader("Permutation Importance 条形图（按模型）")
+        cols = st.columns(min(2, len(plots.permutation_importance)))
+        for idx, (model, path) in enumerate(sorted(plots.permutation_importance.items())):
+            with cols[idx % len(cols)]:
+                st.image(str(path), caption=f"{model} — permutation importance")
+
+
+def _render_scatter_tab(plots) -> None:
+    st.subheader("实测值 vs 预测值 散点图")
+    st.caption("红色虚线 y=x 为理想预测；点越贴近虚线说明模型泛化越好。")
+    if not plots.scatter:
+        st.info("未生成 `scatter_*.png` 图。")
+        return
+    for model in sorted(plots.scatter.keys()):
+        st.markdown(f"**{model}**")
+        targets = plots.scatter[model]
+        cols = st.columns(min(2, len(targets)))
+        for idx, target in enumerate(sorted(targets.keys())):
+            with cols[idx % len(cols)]:
+                st.image(str(targets[target]), caption=f"{model} — {target}")
+
+
+def _render_shap_tab(output_dir: Path, plots) -> None:
+    info = load_best_model_info(output_dir)
+    explanation_method = info.get("explanation_method") or {} if info else {}
+    shap_importance_by_target = info.get("shap_importance_by_target") or {} if info else {}
+
+    st.subheader("SHAP 双目标可解释性")
+    if not plots.shap_summary and not plots.shap_dependence:
+        st.info("未生成 SHAP 图（可能是模型/库版本不兼容或样本过少）。")
+        return
+
+    targets_with_plots = sorted(set(plots.shap_summary) | set(plots.shap_dependence))
+    for target in targets_with_plots:
+        method = explanation_method.get(target, "—")
+        tag = "🟢 SHAP" if method in {"tree", "kernel"} else f"🟠 降级（{method}）"
+        with st.expander(f"{target}  ·  {tag}", expanded=True):
+            if target in plots.shap_summary:
+                st.image(str(plots.shap_summary[target]), caption=f"shap_summary — {target}")
+            imp = shap_importance_by_target.get(target, {})
+            if imp:
+                imp_df = (
+                    pd.DataFrame({"feature": list(imp.keys()), "mean_abs_shap": list(imp.values())})
+                    .sort_values("mean_abs_shap", ascending=False)
+                    .reset_index(drop=True)
+                )
+                st.dataframe(imp_df, use_container_width=True)
+            dep_map = plots.shap_dependence.get(target, {})
+            if dep_map:
+                st.markdown("**SHAP 依赖曲线（按粗糙度特征）**")
+                cols = st.columns(min(2, len(dep_map)))
+                for idx, feat in enumerate(sorted(dep_map.keys())):
+                    with cols[idx % len(cols)]:
+                        st.image(str(dep_map[feat]), caption=f"{target} × {feat}")
+
+
+def _render_recommendation_tab(output_dir: Path) -> None:
+    recs = load_roughness_recommendations(output_dir)
+    cond_df = load_conditional_recommendations(output_dir)
+
+    st.subheader("全局粗糙度推荐区间（基于 SHAP 依赖曲线最长正效应平台段）")
+    st.caption(
+        "阈值定义：在依赖曲线 `(x, SHAP)` 上找"
+        "**最长连续 SHAP ≥ 0 区段 `[x_low, x_high]`**，作为推荐控制区间；"
+        "全负时回退为最大点邻域并标注 `no_positive_region_report_peak`；样本 <6 则返回 `None`。"
+    )
+    recommendations = recs.get("recommendations", {})
+    if not recommendations:
+        st.info("`roughness_recommendations.json` 未找到或为空。")
+    else:
+        rows = []
+        for target, by_feat in recommendations.items():
+            for feat, bundle in by_feat.items():
+                overall = bundle.get("overall", {})
+                rows.append(
+                    {
+                        "target": target,
+                        "feature": feat,
+                        "low": overall.get("low"),
+                        "high": overall.get("high"),
+                        "support": overall.get("support"),
+                        "reason": overall.get("reason"),
+                    }
+                )
+        if rows:
+            st.dataframe(pd.DataFrame(rows), use_container_width=True)
+        st.download_button(
+            "下载 roughness_recommendations.json",
+            data=json.dumps(recs, ensure_ascii=False, indent=2).encode("utf-8"),
+            file_name="roughness_recommendations.json",
+            mime="application/json",
+        )
+
+    st.subheader("条件化推荐（w/b × 养护龄期 3×3 桶）")
+    st.caption("在耦合工况下逐桶独立计算阈值，用于给出「因地制宜」的工艺控制建议。")
+    if cond_df.empty:
+        st.info("`roughness_conditional_recommendations.csv` 未找到（可能样本过少未产出）。")
+    else:
+        st.dataframe(cond_df, use_container_width=True)
+        st.download_button(
+            "下载 roughness_conditional_recommendations.csv",
+            data=(output_dir / "roughness_conditional_recommendations.csv").read_bytes(),
+            file_name="roughness_conditional_recommendations.csv",
+            mime="text/csv",
+        )
+
+
+def _render_other_plots(plots) -> None:
+    if not plots.other:
+        return
+    st.subheader("其他产物图")
+    cols = st.columns(2)
+    for idx, path in enumerate(plots.other):
+        with cols[idx % 2]:
+            st.image(str(path), caption=path.name)
+
 
 if run_clicked and uploaded is not None:
     with tempfile.TemporaryDirectory(prefix="uhpc_streamlit_") as tmp_dir:
@@ -47,50 +318,42 @@ if run_clicked and uploaded is not None:
         output_dir = tmp_path / "outputs"
 
         input_path.write_bytes(uploaded.getvalue())
-        with st.spinner("正在建模与生成图表，请稍候..."):
+        with st.spinner("正在清洗、建模、交叉验证、SHAP 分析，请稍候..."):
             run_pipeline(input_path, output_dir, random_state=int(seed))
 
-        st.success("分析完成")
+        st.success("分析完成。产物按类别分组展示在下方 Tab。")
 
-        metrics_path = output_dir / "metrics_summary.csv"
-        model_info_path = output_dir / "best_model_info.json"
+        plots = discover_plots(output_dir)
 
-        st.subheader("模型评估指标")
-        st.dataframe(pd.read_csv(metrics_path), use_container_width=True)
-        st.download_button(
-            "下载 metrics_summary.csv",
-            data=metrics_path.read_bytes(),
-            file_name="metrics_summary.csv",
-            mime="text/csv",
+        tabs = st.tabs(
+            [
+                "① 概览",
+                "② 精度对比",
+                "③ 特征重要性",
+                "④ 预测散点",
+                "⑤ SHAP 可解释性",
+                "⑥ 工程推荐区间",
+            ]
         )
+        with tabs[0]:
+            _render_overview_tab(output_dir)
+        with tabs[1]:
+            _render_accuracy_tab(output_dir)
+        with tabs[2]:
+            _render_importance_tab(output_dir, plots)
+        with tabs[3]:
+            _render_scatter_tab(plots)
+        with tabs[4]:
+            _render_shap_tab(output_dir, plots)
+        with tabs[5]:
+            _render_recommendation_tab(output_dir)
 
-        st.subheader("最优模型与粗糙度推荐区间")
-        model_info = json.loads(model_info_path.read_text(encoding="utf-8"))
-        st.json(model_info)
-        st.download_button(
-            "下载 best_model_info.json",
-            data=model_info_path.read_bytes(),
-            file_name="best_model_info.json",
-            mime="application/json",
-        )
+        _render_other_plots(plots)
 
-        st.subheader("图表预览与下载")
-        image_files = sorted(output_dir.glob("*.png"))
-        cols = st.columns(2)
-        for idx, img_path in enumerate(image_files):
-            with cols[idx % 2]:
-                st.image(str(img_path), caption=img_path.name)
-                st.download_button(
-                    f"下载 {img_path.name}",
-                    data=img_path.read_bytes(),
-                    file_name=img_path.name,
-                    mime="image/png",
-                    key=f"download_{img_path.name}",
-                )
-
+        st.divider()
         zip_bytes = build_results_zip(output_dir)
         st.download_button(
-            "一键下载全部结果（ZIP）",
+            "一键下载全部产物（ZIP）",
             data=zip_bytes,
             file_name="uhpc_results.zip",
             mime="application/zip",
