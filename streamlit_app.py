@@ -8,6 +8,7 @@ PR#7 起面板对接 PR#2/#3/#4 产物：per-target 指标、Repeated K-Fold 95%
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -334,17 +335,50 @@ def _render_other_plots(plots) -> None:
             st.image(str(path), caption=path.name)
 
 
+def _cleanup_previous_run() -> None:
+    """删除上一次运行的临时目录（若存在），避免磁盘堆积。"""
+    prev = st.session_state.get("uhpc_run_dir")
+    if prev:
+        shutil.rmtree(prev, ignore_errors=True)
+    st.session_state["uhpc_run_dir"] = None
+    st.session_state["uhpc_output_dir"] = None
+    st.session_state["uhpc_pipeline_ran"] = False
+
+
+# Session state 架构说明：
+#   Streamlit 每次 widget 变化都会重跑脚本顶到底；如果把管道跑在 `run_clicked`
+#   分支里、产物放到 `TemporaryDirectory` 上下文内，那么 Tab③ 切换 target / 模型
+#   过滤器会触发 rerun、`run_clicked` 变回 False、tempdir 随上下文退出被清空，
+#   导致"切 filter 就丢结果"。
+#   解决：button 点击时用 `tempfile.mkdtemp` 拿一个**持久**路径，存进
+#   `st.session_state`；后续 rerun 直接从 session_state 读 output_dir，
+#   不再重跑管道。下次点击按钮时先清理上一次目录。
 if run_clicked and uploaded is not None:
-    with tempfile.TemporaryDirectory(prefix="uhpc_streamlit_") as tmp_dir:
-        tmp_path = Path(tmp_dir)
-        input_path = tmp_path / "input.csv"
-        output_dir = tmp_path / "outputs"
+    _cleanup_previous_run()
+    run_root = Path(tempfile.mkdtemp(prefix="uhpc_streamlit_"))
+    input_path = run_root / "input.csv"
+    output_dir = run_root / "outputs"
+    input_path.write_bytes(uploaded.getvalue())
+    with st.spinner("正在清洗、建模、交叉验证、SHAP 分析，请稍候..."):
+        run_pipeline(input_path, output_dir, random_state=int(seed))
+    st.session_state["uhpc_run_dir"] = str(run_root)
+    st.session_state["uhpc_output_dir"] = str(output_dir)
+    st.session_state["uhpc_pipeline_ran"] = True
 
-        input_path.write_bytes(uploaded.getvalue())
-        with st.spinner("正在清洗、建模、交叉验证、SHAP 分析，请稍候..."):
-            run_pipeline(input_path, output_dir, random_state=int(seed))
-
-        st.success("分析完成。产物按类别分组展示在下方 Tab。")
+if st.session_state.get("uhpc_pipeline_ran") and st.session_state.get("uhpc_output_dir"):
+    output_dir = Path(st.session_state["uhpc_output_dir"])
+    if not output_dir.exists():
+        # 目录被外部清理（如操作系统重启），提示用户重跑
+        st.warning("上一次运行的产物目录已失效，请重新点击「开始训练与分析」。")
+        _cleanup_previous_run()
+    else:
+        if run_clicked:
+            st.success("分析完成。产物按类别分组展示在下方 Tab。")
+        else:
+            st.info(
+                "显示的是上一次训练的产物（切换 Tab / 过滤器不会重跑管道，"
+                "点击「开始训练与分析」可用当前上传文件重新训练）。"
+            )
 
         plots = discover_plots(output_dir)
 
