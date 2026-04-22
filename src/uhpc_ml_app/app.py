@@ -3,19 +3,37 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from uhpc_ml_app.config import TrainConfig
 from uhpc_ml_app.data_pipeline import load_and_clean_data
 from uhpc_ml_app.modeling import train_and_compare_models
-from uhpc_ml_app.reporting import run_shap_analysis, save_metrics, save_prediction_scatter
+from uhpc_ml_app.reporting import (
+    run_shap_analysis,
+    save_baseline_metrics,
+    save_cv_metrics,
+    save_metrics,
+    save_per_target_metrics,
+    save_permutation_importance,
+    save_prediction_scatter,
+)
 
 
-def run_pipeline(input_csv: str | Path, output_dir: str | Path, random_state: int = 42) -> None:
+def run_pipeline(
+    input_csv: str | Path,
+    output_dir: str | Path,
+    random_state: int = 42,
+    config: TrainConfig | None = None,
+) -> None:
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
     cleaned = load_and_clean_data(input_csv)
-    result = train_and_compare_models(cleaned, random_state=random_state)
+    result = train_and_compare_models(cleaned, random_state=random_state, config=config)
 
     save_metrics(result, output)
+    save_per_target_metrics(result, output)
+    save_cv_metrics(result, output)
+    save_permutation_importance(result, output)
+    save_baseline_metrics(result, output)
     save_prediction_scatter(result, output)
     run_shap_analysis(result, output)
 

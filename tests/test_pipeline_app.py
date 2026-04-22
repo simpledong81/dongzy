@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from uhpc_ml_app.app import run_pipeline
+from uhpc_ml_app.config import TrainConfig
 
 
 def test_run_pipeline_generates_outputs(tmp_path: Path) -> None:
@@ -23,7 +24,7 @@ def test_run_pipeline_generates_outputs(tmp_path: Path) -> None:
     )
     df.to_csv(input_csv, index=False)
 
-    run_pipeline(input_csv, output_dir, random_state=7)
+    run_pipeline(input_csv, output_dir, random_state=7, config=TrainConfig.for_testing())
 
     assert (output_dir / "metrics_summary.csv").exists()
     assert (output_dir / "best_model_info.json").exists()
