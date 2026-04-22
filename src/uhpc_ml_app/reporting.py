@@ -6,8 +6,10 @@ PR#2 起本模块的对外 API 保持**向下兼容**：
   存在、继续输出 ``metrics_summary.csv`` 与 ``best_model_info.json``；
 - 新增 ``save_per_target_metrics`` / ``save_cv_metrics`` /
   ``save_permutation_importance`` / ``save_baseline_metrics``，按目标与基线
-  拆分指标，便于论文中写"按目标的 R²/RMSE/MAE 与 Repeated K-Fold 95% CI"表格；
-- PR#3 将接管 ``run_shap_analysis`` 做**双目标 + 依赖图驱动阈值**的重写。
+  拆分指标，便于论文中写"按目标的 R²/RMSE/MAE 与 Repeated K-Fold 95% CI"表格。
+
+PR#3 将 ``run_shap_analysis`` 改为薄壳，委托至
+``uhpc_ml_app.shap_analysis.run_dual_target_shap``（双目标 + 依赖图驱动阈值）。
 """
 
 from __future__ import annotations
@@ -19,10 +21,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
-from sklearn.multioutput import MultiOutputRegressor
-from sklearn.pipeline import Pipeline
 
 from uhpc_ml_app.config import FEATURE_COLUMNS, TARGET_COLUMNS
 
@@ -191,86 +190,19 @@ def save_prediction_scatter(result: dict, output_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# SHAP  (PR#3 will supersede this with dual-target + dependence-driven logic)
+# SHAP  (PR#3 薄壳：委托给 shap_analysis.run_dual_target_shap)
 # ---------------------------------------------------------------------------
 
 
-def _estimate_threshold(df: pd.DataFrame, value_col: str, target_col: str) -> dict:
-    """估算粗糙度推荐区间（**教学版规则，非 SHAP 驱动**）。
-
-    PR#3 将用 SHAP 依赖图的符号翻转点/正效应平台段替换此函数。
-    当前实现保留是为了让 ``best_model_info.json`` 的字段结构不发生破坏性变更。
-    """
-    q_low, q_high = df[value_col].quantile([0.1, 0.9]).tolist()
-    subset = df[(df[value_col] >= q_low) & (df[value_col] <= q_high)]
-    if subset.empty:
-        return {"recommended_low": None, "recommended_high": None}
-    grouped = subset.groupby(pd.cut(subset[value_col], bins=5, duplicates="drop"))[target_col].mean()
-    best_bin = grouped.idxmax()
-    return {
-        "recommended_low": float(best_bin.left),
-        "recommended_high": float(best_bin.right),
-    }
-
-
-def _unwrap_for_shap(best_model):
-    """取出 SHAP 能直接解释的子估计器（如 RF/XGBRegressor）。"""
-    inner = best_model
-    if isinstance(inner, Pipeline):
-        inner = inner.steps[-1][1]
-    if isinstance(inner, MultiOutputRegressor):
-        inner = inner.estimators_[0]
-    return inner
-
-
 def run_shap_analysis(result: dict, output_dir: Path) -> dict:
-    """执行 SHAP 解释（PR#2 仍保留单目标版本，PR#3 将替换为双目标实现）。"""
-    best_model = result["best_model"]
-    x_train = result["x_train"]
+    """薄壳：调用 :func:`uhpc_ml_app.shap_analysis.run_dual_target_shap` 并落盘。
 
-    base_estimator = _unwrap_for_shap(best_model)
+    保留旧函数名与文件产物（``best_model_info.json``），但解释逻辑已换成双目标版本。
+    """
+    from uhpc_ml_app.shap_analysis import run_dual_target_shap
 
-    shap_importance: dict[str, float]
-    explanation_method = "shap_tree_or_kernel"
-    try:
-        import shap
-
-        explainer = shap.Explainer(base_estimator, x_train)
-        shap_values = explainer(x_train)
-        shap.summary_plot(shap_values, x_train, show=False)
-        plt.tight_layout()
-        plt.savefig(output_dir / "shap_summary.png", dpi=180, bbox_inches="tight")
-        plt.close()
-
-        mean_abs = np.abs(shap_values.values).mean(axis=0)
-        shap_importance = {
-            feature: float(score) for feature, score in zip(FEATURE_COLUMNS, mean_abs)
-        }
-    except Exception:
-        explanation_method = "correlation_fallback"
-        corr = pd.concat([x_train, result["y_train"]], axis=1).corr(numeric_only=True)
-        target_corr = (
-            corr["tensile_bond_strength"].reindex(FEATURE_COLUMNS).fillna(0.0).abs()
-        )
-        shap_importance = {k: float(v) for k, v in target_corr.to_dict().items()}
-
-    merged = pd.concat([result["x_train"], result["y_train"]], axis=1)
-    rec = _estimate_threshold(merged, "roughness_ra", "tensile_bond_strength")
-
-    output = {
-        "best_model": result["best_model_name"],
-        "model_selection_metric": result.get("model_selection_metric", "test_r2"),
-        "explanation_method": explanation_method,
-        "shap_importance": shap_importance,
-        "roughness_ra_recommendation": rec,
-        # 将 PR#2 的 CV 指标也写入，便于 Streamlit/论文直接引用
-        "cv_metrics": result.get("cv_metrics", {}).get(result["best_model_name"], {}),
-        "metrics_per_target": result.get("metrics_per_target", {}).get(
-            result["best_model_name"], {}
-        ),
-    }
-
-    with (output_dir / "best_model_info.json").open("w", encoding="utf-8") as f:
+    output = run_dual_target_shap(result, Path(output_dir))
+    with (Path(output_dir) / "best_model_info.json").open("w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
     return output
 
