@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from uhpc_ml_app.config import TrainConfig
 from uhpc_ml_app.data_pipeline import load_and_clean_data
 from uhpc_ml_app.modeling import train_and_compare_models
 
@@ -23,7 +24,9 @@ def test_train_and_compare_models_returns_metrics_and_best_model(tmp_path: Path)
     df.to_csv(csv_path, index=False)
     cleaned = load_and_clean_data(csv_path)
 
-    result = train_and_compare_models(cleaned, random_state=42)
+    result = train_and_compare_models(
+        cleaned, random_state=42, config=TrainConfig.for_testing()
+    )
 
     assert set(result["metrics"].keys()) == {"random_forest", "xgboost", "bp_neural_network"}
     assert result["best_model_name"] in {"random_forest", "xgboost", "bp_neural_network"}
