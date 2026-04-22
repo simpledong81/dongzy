@@ -24,9 +24,9 @@ from __future__ import annotations
 
 import json
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 import matplotlib
 
@@ -179,7 +179,12 @@ def _recommend_threshold_from_dependence(
     4. 若整段都 <0（该特征全是负效应），则返回 None 并附原因。
     """
     if len(feature_values) < min_samples:
-        return {"low": None, "high": None, "reason": "too_few_samples", "n_samples": int(len(feature_values))}
+        return {
+            "low": None,
+            "high": None,
+            "reason": "too_few_samples",
+            "n_samples": int(len(feature_values)),
+        }
 
     order = np.argsort(feature_values)
     x_sorted = np.asarray(feature_values)[order]
@@ -191,7 +196,12 @@ def _recommend_threshold_from_dependence(
     smoothing_window = max(2, min(smoothing_window, n))
 
     # pandas rolling 更稳健，边缘处填 ffill/bfill
-    smoothed = pd.Series(s_sorted).rolling(window=smoothing_window, center=True, min_periods=1).mean().to_numpy()
+    smoothed = (
+        pd.Series(s_sorted)
+        .rolling(window=smoothing_window, center=True, min_periods=1)
+        .mean()
+        .to_numpy()
+    )
 
     positive_mask = smoothed >= 0
     if not positive_mask.any():
@@ -250,10 +260,16 @@ def _conditional_recommendations(
             x.loc[mask, feature].to_numpy(),
             shap_vals_feature[mask],
         )
+        # pandas.qcut 返回 Interval 对象；mypy 只看到 Hashable 所以这里显式 cast
+        interval = pd.Interval(
+            left=getattr(bucket, "left", float("nan")),
+            right=getattr(bucket, "right", float("nan")),
+            closed=getattr(bucket, "closed", "right"),
+        )
         records.append(
             {
                 "condition_column": condition_col,
-                "condition_bucket": f"({bucket.left:.3g}, {bucket.right:.3g}]",
+                "condition_bucket": f"({interval.left:.3g}, {interval.right:.3g}]",
                 "n_samples": int(mask.sum()),
                 "feature": feature,
                 **rec,
@@ -536,7 +552,7 @@ def _correlation_fallback(result: dict, output_dir: Path, reason: str) -> dict:
     return {
         "best_model": result["best_model_name"],
         "model_selection_metric": result.get("model_selection_metric", "cv_r2_mean"),
-        "explanation_method": {t: "correlation_fallback" for t in TARGET_COLUMNS},
+        "explanation_method": dict.fromkeys(TARGET_COLUMNS, "correlation_fallback"),
         "failed_targets": {"_global": reason},
         "shap_importance_by_target": importance_by_target,
         "shap_importance": flat,

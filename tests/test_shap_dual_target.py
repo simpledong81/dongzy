@@ -49,7 +49,9 @@ def test_threshold_recovers_positive_plateau_for_monotonic_shap() -> None:
     shap = xs - 2.0  # \u7ebf\u6027\u6b63\u7279\u5f81
     rec = _recommend_threshold_from_dependence(xs, shap)
     assert rec["reason"] == "positive_effect_plateau"
-    assert rec["low"] >= 1.5  # \u5141\u8bb8\u5e73\u6ed1\u7a97\u53e3\u5f15\u5165\u7684\u8fb9\u754c\u504f\u5dee
+    assert (
+        rec["low"] >= 1.5
+    )  # \u5141\u8bb8\u5e73\u6ed1\u7a97\u53e3\u5f15\u5165\u7684\u8fb9\u754c\u504f\u5dee
     assert rec["high"] >= 3.5
 
 
@@ -76,9 +78,7 @@ def _pipeline_result(tmp_path_factory: pytest.TempPathFactory) -> tuple[dict, Pa
     csv = tmp_dir / "ds.csv"
     df.to_csv(csv, index=False)
     cleaned = load_and_clean_data(csv)
-    result = train_and_compare_models(
-        cleaned, random_state=7, config=TrainConfig.for_testing()
-    )
+    result = train_and_compare_models(cleaned, random_state=7, config=TrainConfig.for_testing())
     return result, tmp_dir
 
 

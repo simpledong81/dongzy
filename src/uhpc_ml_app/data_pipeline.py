@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from uhpc_ml_app.config import FEATURE_COLUMNS, TARGET_COLUMNS
+from uhpc_ml_app.schemas import CLEAN_SCHEMA, INPUT_SCHEMA
 
 
 def _clip_outliers_iqr(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
@@ -27,7 +28,7 @@ def _clip_outliers_iqr(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return clipped
 
 
-def load_and_clean_data(csv_path: str | Path) -> pd.DataFrame:
+def load_and_clean_data(csv_path: str | Path, *, validate: bool = True) -> pd.DataFrame:
     """读取并清洗文献整合 CSV 数据。
 
     处理流程（与论文中“数据预处理”部分对应）：
@@ -51,7 +52,12 @@ def load_and_clean_data(csv_path: str | Path) -> pd.DataFrame:
     work = df[required].copy()
     # 强制转为数值，无法转成数值的文本会标记为 NaN
     work = work.apply(pd.to_numeric, errors="coerce")
-    # 删除“整行都是空”的无效样本
+
+    # 入口 schema：允许缺失值，但确保所有建模列类型正确 + 物理合理区间（作为异常粗筛）
+    if validate:
+        work = INPUT_SCHEMA.validate(work, lazy=True)
+
+    # 删除"整行都是空"的无效样本
     work = work.dropna(axis=0, how="all")
     # 用中位数填补缺失值，适合材料试验中偏态分布数据
     work = work.fillna(work.median(numeric_only=True))
@@ -62,4 +68,8 @@ def load_and_clean_data(csv_path: str | Path) -> pd.DataFrame:
 
     if work.empty:
         raise ValueError("数据清洗后为空，请检查输入数据质量。")
+
+    # 出口 schema：建模就绪表必须无 NaN、样本数 >= 8
+    if validate:
+        work = CLEAN_SCHEMA.validate(work, lazy=True)
     return work

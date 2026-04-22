@@ -27,8 +27,8 @@ PR#3 \u4f1a\u57fa\u4e8e\u8be5\u5bf9\u8c61\u505a\u53cc\u76ee\u6807\u89e3\u91ca\u3
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import asdict
-from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -51,11 +51,10 @@ from sklearn.preprocessing import StandardScaler
 try:
     from xgboost import XGBRegressor
 except Exception:  # pragma: no cover
-    XGBRegressor = None
+    XGBRegressor = None  # type: ignore[assignment,misc]
 
 from uhpc_ml_app.baselines import build_baselines
 from uhpc_ml_app.config import FEATURE_COLUMNS, TARGET_COLUMNS, TrainConfig
-
 
 # ---------------------------------------------------------------------------
 # Metric helpers
@@ -153,9 +152,9 @@ def _repeated_kfold_cv_scores(
             "r2_mean": float("nan"),
             "r2_ci95_low": float("nan"),
             "r2_ci95_high": float("nan"),
-            "n_splits": cfg.repeated_cv_n_splits,
-            "n_repeats": cfg.repeated_cv_n_repeats,
-            "error": str(exc),
+            "n_splits": float(cfg.repeated_cv_n_splits),
+            "n_repeats": float(cfg.repeated_cv_n_repeats),
+            "error": str(exc),  # type: ignore[dict-item]
         }
     mean, low, high = _ci95_from_scores(scores)
     return {
@@ -222,9 +221,7 @@ def _build_models(random_state: int, cfg: TrainConfig) -> dict[str, tuple[BaseEs
             }
         )
     else:
-        xgb_estimator = MultiOutputRegressor(
-            GradientBoostingRegressor(random_state=random_state)
-        )
+        xgb_estimator = MultiOutputRegressor(GradientBoostingRegressor(random_state=random_state))
         xgb_grid = (
             {
                 "estimator__n_estimators": [200],
@@ -295,7 +292,7 @@ def _tree_native_importance(
         # RF \u539f\u751f\u591a\u8f93\u51fa\uff0c\u91cd\u8981\u6027\u662f\u8de8\u8f93\u51fa\u5e73\u5747\u7684\u5355\u4e00\u5411\u91cf
         scores = getattr(fitted, "feature_importances_", None)
         if scores is None:
-            return {t: {f: 0.0 for f in feature_names} for t in target_names}
+            return {t: dict.fromkeys(feature_names, 0.0) for t in target_names}
         normalized = {f: float(s) for f, s in zip(feature_names, scores)}
         return {t: dict(normalized) for t in target_names}
     if model_name == "xgboost" and hasattr(fitted, "estimators_"):
@@ -303,7 +300,7 @@ def _tree_native_importance(
             scores = getattr(sub, "feature_importances_", np.zeros(len(feature_names)))
             importance[target_name] = {f: float(s) for f, s in zip(feature_names, scores)}
         return importance
-    return {t: {f: 0.0 for f in feature_names} for t in target_names}
+    return {t: dict.fromkeys(feature_names, 0.0) for t in target_names}
 
 
 def _permutation_importance_per_target(
@@ -387,8 +384,8 @@ def _evaluate_baseline(
     )
     return {
         "name": name,
-        "train": _evaluate_full(y_train, train_pred, TARGET_COLUMNS),
-        "test": _evaluate_full(y_test, test_pred, TARGET_COLUMNS),
+        "train": _evaluate_full(np.asarray(y_train), train_pred, TARGET_COLUMNS),
+        "test": _evaluate_full(np.asarray(y_test), test_pred, TARGET_COLUMNS),
         "cv": cv_metrics,
     }
 

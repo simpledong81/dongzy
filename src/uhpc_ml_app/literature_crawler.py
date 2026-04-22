@@ -9,7 +9,6 @@ from typing import Any
 
 import requests
 
-
 DEFAULT_QUERY = (
     "UHPC NC repair interface bond roughness Ra Rz "
     "water binder ratio fiber volume curing age tensile shear"
@@ -47,7 +46,9 @@ def fetch_openalex(query: str, per_page: int = 100, pages: int = 2) -> list[dict
                     "title": work.get("display_name", ""),
                     "doi": (work.get("doi") or "").replace("https://doi.org/", ""),
                     "year": work.get("publication_year"),
-                    "journal": (work.get("primary_location") or {}).get("source", {}).get("display_name", ""),
+                    "journal": (work.get("primary_location") or {})
+                    .get("source", {})
+                    .get("display_name", ""),
                     "source": "openalex",
                     "url": work.get("id", ""),
                     "abstract": _rebuild_openalex_abstract(work.get("abstract_inverted_index")),
@@ -130,7 +131,8 @@ def extract_structured_features(text: str) -> dict[str, float | None]:
             content, r"(?:water[-\s]?binder ratio|w/b)\s*(?:was|=|:)?\s*([0-9]+(?:\.[0-9]+)?)"
         ),
         "fiber_volume_ratio": _extract_first_float(
-            content, r"(?:fiber volume fraction|fiber volume ratio)\s*(?:was|=|:)?\s*([0-9]+(?:\.[0-9]+)?)"
+            content,
+            r"(?:fiber volume fraction|fiber volume ratio)\s*(?:was|=|:)?\s*([0-9]+(?:\.[0-9]+)?)",
         ),
         "nc_strength_grade": nc_strength,
         "curing_age_days": _extract_first_float(
@@ -191,7 +193,9 @@ def build_literature_database(
     all_records = fetch_openalex(query=query, pages=pages) + fetch_crossref(query=query, rows=200)
     all_records = deduplicate_records(all_records)
 
-    filtered = [r for r in all_records if is_relevant_paper(r.get("title", ""), r.get("abstract", ""))]
+    filtered = [
+        r for r in all_records if is_relevant_paper(r.get("title", ""), r.get("abstract", ""))
+    ]
     output_csv.parent.mkdir(parents=True, exist_ok=True)
 
     with output_csv.open("w", newline="", encoding="utf-8") as f:

@@ -21,7 +21,10 @@ def test_load_and_clean_data_handles_missing_and_outliers(tmp_path: Path) -> Non
     )
     df.to_csv(csv_path, index=False)
 
-    cleaned = load_and_clean_data(csv_path)
+    # 此测试样本量 <8，pandera CLEAN_SCHEMA 的 min_sample_count 会拦截；
+    # 这里关闭 schema 校验只验证清洗路径的数值行为。
+    # 真正的 schema 行为由 test_schemas.py 覆盖。
+    cleaned = load_and_clean_data(csv_path, validate=False)
 
     assert cleaned.isna().sum().sum() == 0
     assert len(cleaned) < len(df)

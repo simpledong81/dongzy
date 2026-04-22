@@ -1,5 +1,4 @@
-from dataclasses import dataclass, field
-
+from dataclasses import dataclass
 
 FEATURE_COLUMNS = [
     "roughness_ra",
