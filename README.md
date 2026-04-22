@@ -9,6 +9,8 @@
 - 预测值-实测值散点图
 - SHAP 可解释性分析与粗糙度推荐区间
 
+> ⚠️ **重要说明**：`data/raw/literature_sample.csv` 为**合成示例数据**（字段按固定步长递增/循环，仅用于走通程序流程与单测），**禁止将基于该数据集的输出直接用于论文正文、答辩或工程决策**。论文级结果需基于按 `docs/data_protocol.md`（PRISMA 流程）整理的真实文献数据库重新训练。当前版本的预处理仅做缺失值填补与 IQR 异常值剔除，**全局归一化尚未实现**；BP 神经网络对输入敏感，后续 PR 会改用 `Pipeline(StandardScaler + MLPRegressor)` 以保证与 RF/XGBoost 的公平比较。
+
 ## 1. 使用 Python 3.12 虚拟环境
 
 ```bash
