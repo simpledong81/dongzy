@@ -356,14 +356,24 @@ def _cleanup_previous_run() -> None:
 if run_clicked and uploaded is not None:
     _cleanup_previous_run()
     run_root = Path(tempfile.mkdtemp(prefix="uhpc_streamlit_"))
+    # 先登记 run_root 到 session_state：即使 run_pipeline 中途抛异常，下一次点击按钮
+    # 时 `_cleanup_previous_run` 仍能找到并删除这个目录，避免 /tmp 堆积孤儿 tempdir。
+    st.session_state["uhpc_run_dir"] = str(run_root)
     input_path = run_root / "input.csv"
     output_dir = run_root / "outputs"
     input_path.write_bytes(uploaded.getvalue())
-    with st.spinner("正在清洗、建模、交叉验证、SHAP 分析，请稍候..."):
-        run_pipeline(input_path, output_dir, random_state=int(seed))
-    st.session_state["uhpc_run_dir"] = str(run_root)
-    st.session_state["uhpc_output_dir"] = str(output_dir)
-    st.session_state["uhpc_pipeline_ran"] = True
+    try:
+        with st.spinner("正在清洗、建模、交叉验证、SHAP 分析，请稍候..."):
+            run_pipeline(input_path, output_dir, random_state=int(seed))
+    except Exception as exc:  # noqa: BLE001 — 面向终端用户的最外层捕获：保证 UI 不白屏
+        # 不手动清理；由下一次按钮点击的 `_cleanup_previous_run` 统一回收，
+        # 同时保留失败目录供本次 rerun 中用户下载 / 调试（目前未实现下载，但不堵路）。
+        st.session_state["uhpc_pipeline_ran"] = False
+        st.error(f"训练失败：{type(exc).__name__}: {exc}")
+    else:
+        # 仅在管道成功完成时才标记为已跑，触发下游 Tab 渲染分支。
+        st.session_state["uhpc_output_dir"] = str(output_dir)
+        st.session_state["uhpc_pipeline_ran"] = True
 
 if st.session_state.get("uhpc_pipeline_ran") and st.session_state.get("uhpc_output_dir"):
     output_dir = Path(st.session_state["uhpc_output_dir"])
