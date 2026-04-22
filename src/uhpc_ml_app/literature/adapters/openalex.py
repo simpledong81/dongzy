@@ -78,7 +78,7 @@ class OpenAlexAdapter(SourceAdapter):
             first_author=_first_author_of(work),
             year=work.get("publication_year"),
             title=title or None,
-            journal=(work.get("primary_location") or {}).get("source", {}).get("display_name", "")
+            journal=((work.get("primary_location") or {}).get("source") or {}).get("display_name", "")
             or None,
             extraction_method="abstract_regex",
             confidence=1,

@@ -164,7 +164,7 @@ def run_ingest(
         clean_path = str(output_dir / "literature_clean.csv")
         clean.to_csv(clean_path, index=False)
         clean_count = len(clean)
-    except pa.errors.SchemaError as exc:
+    except (pa.errors.SchemaError, pa.errors.SchemaErrors) as exc:
         # 记录校验失败但不中断：让用户自己看 staging 做手动补录
         (output_dir / "clean_schema_error.txt").write_text(str(exc), encoding="utf-8")
 

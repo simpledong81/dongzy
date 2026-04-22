@@ -68,6 +68,28 @@ def test_openalex_adapter_builds_records_from_inverted_abstract() -> None:
     assert session.calls[0]["url"].endswith("/works")
 
 
+def test_openalex_adapter_handles_null_primary_location_source() -> None:
+    # OpenAlex 经常把 primary_location.source 设为 null（期刊未识别），适配器不能崩
+    payload = {
+        "results": [
+            {
+                "id": "https://openalex.org/W999",
+                "display_name": "Unknown journal paper",
+                "doi": None,
+                "publication_year": 2020,
+                "primary_location": {"source": None},
+                "authorships": [],
+                "abstract_inverted_index": {"Ra": [0], "=": [1], "2.0": [2]},
+            }
+        ]
+    }
+    session = _FakeSession([payload])
+    adapter = OpenAlexAdapter(session=session)  # type: ignore[arg-type]
+    records = list(adapter.ingest("uhpc", pages=1))
+    assert len(records) == 1
+    assert records[0].journal is None
+
+
 def test_crossref_adapter_strips_jats_and_parses_numbers() -> None:
     payload = {
         "message": {
