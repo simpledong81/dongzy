@@ -5,6 +5,7 @@ from pathlib import Path
 
 from uhpc_ml_app.config import TrainConfig
 from uhpc_ml_app.data_pipeline import load_and_clean_data
+from uhpc_ml_app.mlflow_integration import log_result as _mlflow_log_result
 from uhpc_ml_app.modeling import train_and_compare_models
 from uhpc_ml_app.reporting import (
     run_shap_analysis,
@@ -36,6 +37,9 @@ def run_pipeline(
     save_baseline_metrics(result, output)
     save_prediction_scatter(result, output)
     run_shap_analysis(result, output)
+
+    # 可选：把本次 run 的参数 / 指标 / 产物同步到 MLflow（需要环境变量 + mlflow 已安装）
+    _mlflow_log_result(result, str(output))
 
 
 def main() -> None:

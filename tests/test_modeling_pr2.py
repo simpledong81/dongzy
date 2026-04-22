@@ -51,9 +51,7 @@ def test_per_target_metrics_are_split_by_target(tmp_path: Path) -> None:
     df.to_csv(csv, index=False)
     cleaned = load_and_clean_data(csv)
 
-    result = train_and_compare_models(
-        cleaned, random_state=11, config=TrainConfig.for_testing()
-    )
+    result = train_and_compare_models(cleaned, random_state=11, config=TrainConfig.for_testing())
 
     for model_name, splits in result["metrics_per_target"].items():
         assert set(splits.keys()) == {"train", "test"}
@@ -69,9 +67,7 @@ def test_cv_metrics_contain_ci(tmp_path: Path) -> None:
     df.to_csv(csv, index=False)
     cleaned = load_and_clean_data(csv)
 
-    result = train_and_compare_models(
-        cleaned, random_state=11, config=TrainConfig.for_testing()
-    )
+    result = train_and_compare_models(cleaned, random_state=11, config=TrainConfig.for_testing())
     for model_name, cv in result["cv_metrics"].items():
         assert {"r2_mean", "r2_ci95_low", "r2_ci95_high", "n_splits", "n_repeats"} <= set(cv.keys())
         # \u5747\u503c\u4f4d\u4e8e\u4e0a\u4e0b\u754c\u4e4b\u95f4\uff08\u6216\u5747\u4e3a NaN \u7684\u7aef\u60c5\uff0c\u5fe7\u5316\u5bb9\u5fcd\uff09
@@ -85,9 +81,7 @@ def test_permutation_importance_exists_for_all_models(tmp_path: Path) -> None:
     df.to_csv(csv, index=False)
     cleaned = load_and_clean_data(csv)
 
-    result = train_and_compare_models(
-        cleaned, random_state=11, config=TrainConfig.for_testing()
-    )
+    result = train_and_compare_models(cleaned, random_state=11, config=TrainConfig.for_testing())
     pim = result["permutation_importance_by_model"]
     assert set(pim.keys()) == {"random_forest", "xgboost", "bp_neural_network"}
     for model_name, per_target in pim.items():
@@ -109,9 +103,7 @@ def test_baseline_metrics_include_three_entries(tmp_path: Path) -> None:
     df.to_csv(csv, index=False)
     cleaned = load_and_clean_data(csv)
 
-    result = train_and_compare_models(
-        cleaned, random_state=11, config=TrainConfig.for_testing()
-    )
+    result = train_and_compare_models(cleaned, random_state=11, config=TrainConfig.for_testing())
     baselines = result["baseline_metrics"]
     assert set(baselines.keys()) == {"baseline_mean", "baseline_linear", "baseline_sqrt_fc"}
     for bname, entry in baselines.items():

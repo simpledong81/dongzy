@@ -14,8 +14,6 @@
 
 from __future__ import annotations
 
-from typing import Iterable
-
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin
@@ -28,7 +26,7 @@ class MeanPredictor(BaseEstimator, RegressorMixin):
     def __init__(self) -> None:
         self.means_: np.ndarray | None = None
 
-    def fit(self, X: pd.DataFrame | np.ndarray, y: pd.DataFrame | np.ndarray) -> "MeanPredictor":
+    def fit(self, X: pd.DataFrame | np.ndarray, y: pd.DataFrame | np.ndarray) -> MeanPredictor:
         y_arr = np.asarray(y, dtype=float)
         if y_arr.ndim == 1:
             y_arr = y_arr.reshape(-1, 1)
@@ -63,7 +61,9 @@ class EmpiricalSqrtFcBaseline(BaseEstimator, RegressorMixin):
     def _select_fc(self, X: pd.DataFrame | np.ndarray) -> np.ndarray:
         if isinstance(X, pd.DataFrame):
             if self.fc_column not in X.columns:
-                raise KeyError(f"fc_column={self.fc_column} not found in X columns: {list(X.columns)}")
+                raise KeyError(
+                    f"fc_column={self.fc_column} not found in X columns: {list(X.columns)}"
+                )
             fc = X[self.fc_column].to_numpy(dtype=float)
         else:
             raise TypeError(
@@ -71,7 +71,7 @@ class EmpiricalSqrtFcBaseline(BaseEstimator, RegressorMixin):
             )
         return np.clip(fc, a_min=1e-6, a_max=None)
 
-    def fit(self, X: pd.DataFrame, y: pd.DataFrame | np.ndarray) -> "EmpiricalSqrtFcBaseline":
+    def fit(self, X: pd.DataFrame, y: pd.DataFrame | np.ndarray) -> EmpiricalSqrtFcBaseline:
         fc = self._select_fc(X)
         sqrt_fc = np.sqrt(fc)
         y_arr = np.asarray(y, dtype=float)
@@ -104,7 +104,7 @@ def build_baselines() -> dict[str, BaseEstimator]:
     }
 
 
-__all__: Iterable[str] = [
+__all__ = [
     "MeanPredictor",
     "EmpiricalSqrtFcBaseline",
     "build_baselines",

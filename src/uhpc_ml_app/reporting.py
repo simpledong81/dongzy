@@ -25,7 +25,6 @@ import pandas as pd
 
 from uhpc_ml_app.config import FEATURE_COLUMNS, TARGET_COLUMNS
 
-
 # ---------------------------------------------------------------------------
 # Metrics tables
 # ---------------------------------------------------------------------------
@@ -133,9 +132,9 @@ def save_permutation_importance(result: dict, output_dir: Path) -> None:
         ax = df.plot(kind="barh", figsize=(6, 4))
         ax.set_xlabel("Permutation importance (R² drop)")
         ax.set_title(f"Permutation importance — {model}")
-        ax.figure.tight_layout()
-        ax.figure.savefig(output_dir / f"permutation_importance_{model}.png", dpi=180)
-        plt.close(ax.figure)
+        plt.tight_layout()
+        plt.savefig(output_dir / f"permutation_importance_{model}.png", dpi=180)
+        plt.close()
 
 
 def save_baseline_metrics(result: dict, output_dir: Path) -> None:

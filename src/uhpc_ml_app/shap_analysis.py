@@ -24,9 +24,9 @@ from __future__ import annotations
 
 import json
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 import matplotlib
 
@@ -179,7 +179,12 @@ def _recommend_threshold_from_dependence(
     4. 若整段都 <0（该特征全是负效应），则返回 None 并附原因。
     """
     if len(feature_values) < min_samples:
-        return {"low": None, "high": None, "reason": "too_few_samples", "n_samples": int(len(feature_values))}
+        return {
+            "low": None,
+            "high": None,
+            "reason": "too_few_samples",
+            "n_samples": int(len(feature_values)),
+        }
 
     order = np.argsort(feature_values)
     x_sorted = np.asarray(feature_values)[order]
@@ -191,7 +196,12 @@ def _recommend_threshold_from_dependence(
     smoothing_window = max(2, min(smoothing_window, n))
 
     # pandas rolling 更稳健，边缘处填 ffill/bfill
-    smoothed = pd.Series(s_sorted).rolling(window=smoothing_window, center=True, min_periods=1).mean().to_numpy()
+    smoothed = (
+        pd.Series(s_sorted)
+        .rolling(window=smoothing_window, center=True, min_periods=1)
+        .mean()
+        .to_numpy()
+    )
 
     positive_mask = smoothed >= 0
     if not positive_mask.any():
@@ -250,10 +260,16 @@ def _conditional_recommendations(
             x.loc[mask, feature].to_numpy(),
             shap_vals_feature[mask],
         )
+        # pandas.qcut 返回 Interval 对象；mypy 只看到 Hashable 所以这里显式 cast
+        interval = pd.Interval(
+            left=getattr(bucket, "left", float("nan")),
+            right=getattr(bucket, "right", float("nan")),
+            closed=getattr(bucket, "closed", "right"),
+        )
         records.append(
             {
                 "condition_column": condition_col,
-                "condition_bucket": f"({bucket.left:.3g}, {bucket.right:.3g}]",
+                "condition_bucket": f"({interval.left:.3g}, {interval.right:.3g}]",
                 "n_samples": int(mask.sum()),
                 "feature": feature,
                 **rec,
@@ -294,27 +310,42 @@ def _explain_for_target(
 
     # case 1: MultiOutputRegressor 包 tree 子估计器（典型 XGBoost 路径）
     if multi is not None and all(_is_tree_model(est) for est in multi):
-        shap_arr = _tree_explain(multi[target_idx], x_explain, target_idx=0)
-        return _PerTargetShap(
-            target=target_name,
-            explainer_kind="tree",
-            shap_values=shap_arr,
-            feature_values=x_explain.to_numpy(),
-            feature_names=list(x_explain.columns),
-        )
+        try:
+            shap_arr = _tree_explain(multi[target_idx], x_explain, target_idx=0)
+            return _PerTargetShap(
+                target=target_name,
+                explainer_kind="tree",
+                shap_values=shap_arr,
+                feature_values=x_explain.to_numpy(),
+                feature_names=list(x_explain.columns),
+            )
+        except Exception as exc:
+            # 例如 shap 0.49 + xgboost 3.x 的 base_score 解析不兼容 → 回退到 KernelExplainer
+            warnings.warn(
+                f"TreeExplainer failed for {target_name}, falling back to KernelExplainer: {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
     # case 2: 原生多输出 tree（RandomForest 默认）
-    if multi is None and _is_tree_model(core):
-        shap_arr = _tree_explain(core, x_explain, target_idx=target_idx)
-        return _PerTargetShap(
-            target=target_name,
-            explainer_kind="tree",
-            shap_values=shap_arr,
-            feature_values=x_explain.to_numpy(),
-            feature_names=list(x_explain.columns),
-        )
+    elif multi is None and _is_tree_model(core):
+        try:
+            shap_arr = _tree_explain(core, x_explain, target_idx=target_idx)
+            return _PerTargetShap(
+                target=target_name,
+                explainer_kind="tree",
+                shap_values=shap_arr,
+                feature_values=x_explain.to_numpy(),
+                feature_names=list(x_explain.columns),
+            )
+        except Exception as exc:
+            warnings.warn(
+                f"TreeExplainer failed for {target_name}, falling back to KernelExplainer: {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
-    # case 3: Pipeline 包 MLP 或其他——KernelExplainer
+    # case 3: Pipeline 包 MLP 或 tree fallback——KernelExplainer
     shap_arr = _kernel_explain(best_model, x_train, x_explain, target_idx=target_idx)
     # KernelExplainer 可能在 x_explain 子采样，所以要同步特征值
     if shap_arr.shape[0] != x_explain.shape[0]:
@@ -536,7 +567,7 @@ def _correlation_fallback(result: dict, output_dir: Path, reason: str) -> dict:
     return {
         "best_model": result["best_model_name"],
         "model_selection_metric": result.get("model_selection_metric", "cv_r2_mean"),
-        "explanation_method": {t: "correlation_fallback" for t in TARGET_COLUMNS},
+        "explanation_method": dict.fromkeys(TARGET_COLUMNS, "correlation_fallback"),
         "failed_targets": {"_global": reason},
         "shap_importance_by_target": importance_by_target,
         "shap_importance": flat,
