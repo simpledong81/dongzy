@@ -85,16 +85,39 @@ def _render_overview_tab(output_dir: Path) -> None:
 
     explanation_method = info.get("explanation_method") or {}
     failed_targets = info.get("failed_targets") or {}
-    if failed_targets or any(v == "correlation_fallback" for v in explanation_method.values()):
-        st.warning(
-            "SHAP 存在降级：以下目标使用 `correlation_fallback`，该结果**不等价于** SHAP，"
-            "请勿作为 SHAP 结论写入论文："
-            + ", ".join(t for t, v in explanation_method.items() if v == "correlation_fallback")
+
+    fallback_targets = [t for t, v in explanation_method.items() if v == "correlation_fallback"]
+    failed_shap_targets = [t for t, v in explanation_method.items() if v == "failed"]
+
+    # 三种降级语义分开告警：全局相关系数兜底 / 个别 target SHAP 失败 / 正常
+    if fallback_targets:
+        # 来自 shap_analysis._correlation_fallback：所有 target 都失败时才发生，
+        # 此时整模型改用 |corr(feature, target)| 作为重要性替代，不等价于 SHAP。
+        st.error(
+            "SHAP 全局降级为 `correlation_fallback`：以下目标使用相关系数作为特征重要性替代，"
+            "**不等价于** SHAP，请勿作为 SHAP 结论写入论文："
+            + ", ".join(fallback_targets)
             + (
-                "；失败原因：" + "; ".join(f"{k}={v}" for k, v in failed_targets.items())
+                "；原因：" + "; ".join(f"{k}={v}" for k, v in failed_targets.items())
                 if failed_targets
                 else ""
-            ),
+            )
+        )
+    elif failed_shap_targets:
+        # 个别 target 的 SHAP 抛异常（其它 target 仍有有效 SHAP），UI 里明确列出失败 target
+        # 及原因，便于排查（常见于 xgboost / shap 版本 base_score 序列化不兼容等）。
+        st.warning(
+            "SHAP 部分目标未能生成解释："
+            + ", ".join(failed_shap_targets)
+            + (
+                "；原因："
+                + "; ".join(
+                    f"{k}={v}" for k, v in failed_targets.items() if k in failed_shap_targets
+                )
+                if failed_targets
+                else ""
+            )
+            + "。其它目标的 SHAP 图与阈值仍可正常使用。"
         )
     elif explanation_method:
         methods = ", ".join(f"{k}={v}" for k, v in explanation_method.items())
